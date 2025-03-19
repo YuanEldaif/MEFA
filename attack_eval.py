@@ -250,8 +250,8 @@ def robustness_eval(rank, args, config, world_size):
     accuracies = {}
     accuracies_adv = {}
     for reps in args.reps_list:
-        accuracy_nat = classify_and_evaluate_all(args, clf, ims_orig, labels, model, scheduler, device, reps=reps)
-        accuracy_adv = classify_and_evaluate_all(args, clf, ims_adv, labels, model, scheduler, device, reps=reps)
+        accuracy_nat = classify_and_evaluate_all_multigpu(args, clf, ims_orig, labels, model, scheduler, device, reps=reps)
+        accuracy_adv = classify_and_evaluate_all_multigpu(args, clf, ims_adv, labels, model, scheduler, device, reps=reps)
         accuracies[reps] = accuracy_nat  # Store accuracy with reps as the key
         accuracies_adv[reps] = accuracy_adv
 
@@ -285,12 +285,12 @@ def parse_args_and_config():
     parser.add_argument('--data_dir', default='/home/yuandu/MEGA/data/cifar10_pt_custom/val/', type=str, help='path to the data directory')
     
     parser.add_argument('--data_type', type=str, default='cifar10', help='dataset to use')
-    parser.add_argument('--batch_size', type=int, default=2, help='batch size')
+    parser.add_argument('--batch_size', type=int, default=1, help='batch size')
     parser.add_argument('--image_size', type=int, default=32, help='image size')
     parser.add_argument('--start_batch', type=int, default=1, help='start batch number')
-    parser.add_argument('--end_batch', type=int, default=10, help='end batch number')
+    parser.add_argument('--end_batch', type=int, default=20, help='end batch number')
     parser.add_argument('--exp_dir', type=str, default='./Result/', help='path to the save the experiment')
-    parser.add_argument('--exp_name', type=str, default='ebm', choices=['ebm','hugging_face','diffpure','hf_DDPM','robust_diff'], help='path to the save the experiment')
+    parser.add_argument('--exp_name', type=str, default='diffpure', choices=['ebm','hugging_face','diffpure','hf_DDPM','robust_diff'], help='path to the save the experiment')
     parser.add_argument('--model_data', type=str, default='cifar10', choices=['cifar10','food','cinic10'], help='dataset that the model pre-trained on')
 
     # EBM Arguments 
