@@ -169,39 +169,6 @@ def robustness_eval(rank, args, config, world_size):
                     torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_final_adv': x_final_adv, 'grad':grad},
                      args.exp_dir + f'/log/{args.model_data}_pgdattack_defense_reps{args.eot_defense_reps}.pth')
             dist.barrier()
-            
-    def classify_and_evaluate_all(args, clf, images, labels, model, scheduler, device, reps):
-        dataset = TensorDataset(images, labels)
-        # sampler = torch.utils.data.distributed.DistributedSampler(dataset,num_replicas=world_size,rank=rank)
-        loader = DataLoader(dataset,batch_size=args.batch_size,num_workers=0,pin_memory=True,drop_last=False,shuffle=False)
-        # Set end_batch based on the number of batches
-        num_batches = len(loader)
-        args.end_batch = num_batches
-        total = num_batches*args.batch_size
-        print(f"Number of batches: {num_batches}")
-        print(f"end_batch set to: {args.end_batch}")
-        print(f"batch_size: {args.batch_size}")
-        print(f"total: {total}")
-
-        correct_adv_sum = 0
-    
-        for batch, (X_batch, y_batch) in enumerate(loader):
-            if (batch + 1) < args.start_batch:
-                continue
-            elif (batch + 1) > args.end_batch:
-                break
-            else:
-                batch_images = X_batch.to(device)
-                batch_labels = y_batch.to(device)
-                X_repeat = batch_images.repeat([reps, 1, 1, 1])
-                args.pytorch == False
-                X_repeat_purified, x_pure_list, noi_pure_list, curr_ts, next_ts = purify(args, model, scheduler, X_repeat)
-  
-                correct_adv, _, _= predict_logits(args, clf, X_repeat_purified, batch_labels, requires_grad=False, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')
-                correct_adv_sum += correct_adv.sum().item()    
-
-        accuracy_adv = 100 * correct_adv_sum / total
-        return accuracy_adv
 
     def classify_and_evaluate_all_multigpu(args, clf, images, labels, model, scheduler, rank, world_size, device, reps):
         dataset = TensorDataset(images, labels)
