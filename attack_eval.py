@@ -76,8 +76,8 @@ def robustness_eval(rank, args, config, world_size):
         results = '/home/yuandu/MEGA/data/data_eval.pth'
         # Load saved tensors
         saved_data = torch.load(results)
-        ims_orig = saved_data['ims_orig'][:n_images]
-        labels = saved_data['labs'][:n_images]
+        ims_orig = saved_data['ims_orig'][:args.n_images]
+        labels = saved_data['labs'][:args.n_images]
         dataset = TensorDataset(ims_orig, labels)
         attack_loader = DataLoader(dataset, batch_size=n_images, pin_memory=True, num_workers=0, shuffle=False)
 
