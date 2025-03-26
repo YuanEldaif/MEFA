@@ -79,7 +79,7 @@ def robustness_eval(rank, args, config, world_size):
         ims_orig = saved_data['ims_orig'][:args.n_images]
         labels = saved_data['labs'][:args.n_images]
         dataset = TensorDataset(ims_orig, labels)
-        attack_loader = DataLoader(dataset, batch_size=n_images, pin_memory=True, num_workers=0, shuffle=False)
+        attack_loader = DataLoader(dataset, batch_size=args.n_images, pin_memory=True, num_workers=0, shuffle=False)
 
     clf = get_classifier(args, rank, device)
 
