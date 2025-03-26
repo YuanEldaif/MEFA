@@ -129,7 +129,11 @@ def robustness_eval(rank, args, config, world_size):
             break
         else:
             # load to device
-            X_batch, y_batch = X_batch.to(device), y_batch["y"].to(device)
+            X_batch = X_batch.to(device)
+            if not args.use_saved_data:
+                y_batch = y_batch["y"].to(device)
+            else:
+                y_batch = y_batch.to(device)
 
             # record original states and labels
             ims_orig_device = torch.cat((ims_orig_device, X_batch), dim=0)
