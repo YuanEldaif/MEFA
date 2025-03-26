@@ -150,7 +150,10 @@ def get_accuracy(args, data_loader, model, rank, world_size, device):
                 if rank == 0:
                     plot_ims(os.path.join(args.exp_dir, 'sample.pdf'), x_orig)
             x = x_orig.to(device)
-            y = y_orig["y"].to(device)
+            if not args.use_saved_data:
+                y = y_orig["y"].to(device)
+            else:
+                y = y_orig.to(device)
             
             with torch.no_grad():
                 if args.classifier_name=='cifar10-wideresnet-28-10':

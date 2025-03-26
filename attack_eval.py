@@ -350,7 +350,7 @@ def parse_args_and_config():
     parser.add_argument('--unet_weight_path', default='./weights/cinic10_DDPM[250].pt', type=str, help='path to the model weights directory')
 
     # Adv Arguments
-    parser.add_argument('--use_saved_data', default=False, action='store_true', help='using saved data')
+    parser.add_argument('--use_saved_data', default=True, action='store_true', help='using saved data')
     parser.add_argument('--APGD', default=False, action='store_true', help='use APGD attack')
     parser.add_argument('--bpda_only', default=False, action='store_true', help='use BPDA only attack')
     parser.add_argument('--classifier_name', type=str, default='cifar10-wideresnet-28-10', choices=['wideresnet', 'cifar10-wideresnet-28-10'], help='which classifier to use')
