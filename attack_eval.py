@@ -60,7 +60,8 @@ def robustness_eval(rank, args, config, world_size):
     # data loader load the first 510 for 3 gpus.
     logger = Logger1(file_name=f'{args.exp_dir}/log.txt', file_mode="w+", should_flush=True)
     
-    attack_loader = load_data(
+    if not args.use_saved_data:
+        attack_loader = load_data(
         data_dir=args.data_dir,
         batch_size=args.batch_size,
         image_size=args.image_size,
@@ -70,7 +71,15 @@ def robustness_eval(rank, args, config, world_size):
         class_cond=True,
         random_crop=False,
         random_flip=False
-    )
+        )
+    else:
+        results = '/home/yuandu/MEGA/data/data_eval.pth'
+        # Load saved tensors
+        saved_data = torch.load(results)
+        ims_orig = saved_data['ims_orig'][:n_images]
+        labels = saved_data['labs'][:n_images]
+        dataset = TensorDataset(ims_orig, labels)
+        attack_loader = DataLoader(dataset, batch_size=n_images, pin_memory=True, num_workers=0, shuffle=False)
 
     clf = get_classifier(args, rank, device)
 
@@ -169,22 +178,21 @@ def robustness_eval(rank, args, config, world_size):
                     torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_final_adv': x_final_adv, 'grad':grad},
                      args.exp_dir + f'/log/{args.model_data}_pgdattack_defense_reps{args.eot_defense_reps}.pth')
             dist.barrier()
-
-    def classify_and_evaluate_all_multigpu(args, clf, images, labels, model, scheduler, rank, world_size, device, reps):
+            
+    def classify_and_evaluate_all(args, clf, images, labels, model, scheduler, device, reps):
         dataset = TensorDataset(images, labels)
-        sampler = torch.utils.data.distributed.DistributedSampler(dataset,num_replicas=world_size,rank=rank)
-        loader = DataLoader(dataset,batch_size=args.batch_size,num_workers=0,pin_memory=True,sampler=sampler,drop_last=False)
+        # sampler = torch.utils.data.distributed.DistributedSampler(dataset,num_replicas=world_size,rank=rank)
+        loader = DataLoader(dataset,batch_size=args.batch_size,num_workers=0,pin_memory=True,drop_last=False,shuffle=False)
         # Set end_batch based on the number of batches
         num_batches = len(loader)
         args.end_batch = num_batches
-        total = num_batches*args.batch_size*world_size
-        if rank == 0:
-            print(f"Number of batches: {num_batches}")
-            print(f"end_batch set to: {args.end_batch}")
-            print(f"batch_size: {args.batch_size}")
-            print(f"total: {total}")
+        total = num_batches*args.batch_size
+        print(f"Number of batches: {num_batches}")
+        print(f"end_batch set to: {args.end_batch}")
+        print(f"batch_size: {args.batch_size}")
+        print(f"total: {total}")
 
-        correct_adv_sum = torch.zeros(0).to(device)
+        correct_adv_sum = 0
     
         for batch, (X_batch, y_batch) in enumerate(loader):
             if (batch + 1) < args.start_batch:
@@ -198,10 +206,61 @@ def robustness_eval(rank, args, config, world_size):
                 args.pytorch == False
                 X_repeat_purified, x_pure_list, noi_pure_list, curr_ts, next_ts = purify(args, model, scheduler, X_repeat)
   
-                correct_adv, _, _= predict_logits(args, clf, X_repeat_purified, batch_labels, requires_grad=True, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')     
+                correct_adv, _, _= predict_logits(args, clf, X_repeat_purified, batch_labels, requires_grad=False, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')
+                correct_adv_sum += correct_adv.sum().item()    
+
+        accuracy_adv = 100 * correct_adv_sum / total
+        return accuracy_adv
+
+    def classify_and_evaluate_all_multigpu(args, clf, images, labels, model, scheduler, rank, world_size, device, reps):
+        dataset = TensorDataset(images, labels)
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset,num_replicas=world_size,rank=rank)
+        loader = DataLoader(dataset,batch_size=args.batch_size,num_workers=0,pin_memory=True,sampler=sampler,drop_last=False,shuffle=False)
+        # Set end_batch based on the number of batches
+        num_batches = len(loader)
+        args.end_batch = num_batches
+        total = num_batches*args.batch_size*world_size
+        if rank == 0:
+            print(f"Number of batches: {num_batches}")
+            print(f"end_batch set to: {args.end_batch}")
+            print(f"batch_size: {args.batch_size}")
+            print(f"total: {total}")
+
+        correct_adv_sum = torch.zeros(0).to(device)
+        for batch, (X_batch, y_batch) in enumerate(loader):
+            if (batch + 1) < args.start_batch:
+                continue
+            elif (batch + 1) > args.end_batch:
+                break
+            else:
+                X = X_batch.to(device)
+                batch_labels = y_batch.to(device)
+                if reps > 50:
+                    n = reps // 50  # Number of subgroups for the memory limit of 50 reps for diffpure
+                    X_purified_list = []
+                    for i in range(n):
+                        X_subgroup = X.repeat([50, 1, 1, 1])
+                        X_purified_subgroup, x_pure_list, noi_pure_list, curr_ts, next_ts = purify(args, model, scheduler, X_subgroup)
+                        X_purified_list.append(X_purified_subgroup)
+                    # If reps is not exactly divisible by 50, handle the remainder
+                    remainder = reps % 50
+                    if remainder > 0:
+                        X_subgroup = X.repeat([remainder, 1, 1, 1])
+                        X_purified_subgroup, x_pure_list, noi_pure_list, curr_ts, next_ts = purify(args, model, scheduler, X_subgroup)
+                        X_purified_list.append(X_purified_subgroup)
+                        # Concatenate all purified subgroups
+                    X_purified = torch.cat(X_purified_list, dim=0)
+                else:
+                    X_repeat = X.repeat([reps, 1, 1, 1])
+                    X_purified, x_pure_list, noi_pure_list, curr_ts, next_ts = purify(args, model, scheduler, X_repeat)
+
+  
+                correct_adv, _, _= predict_logits(args, clf, X_purified, batch_labels, requires_grad=True, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')
                 correct_adv_sum = torch.cat((correct_adv_sum, correct_adv.to(device)), dim=0)
-                correct_adv_cpu = gather_on_cpu(correct_adv_sum).item()
-        accuracy_adv = 100 * correct_adv_cpu / total
+                correct_adv_cpu = gather_on_cpu(correct_adv_sum)
+
+        accuracy_adv = 100 * correct_adv_cpu.sum() / total
+    
         return accuracy_adv
 
     if args.bpda_only:
@@ -217,8 +276,8 @@ def robustness_eval(rank, args, config, world_size):
     accuracies = {}
     accuracies_adv = {}
     for reps in args.reps_list:
-        accuracy_nat = classify_and_evaluate_all_multigpu(args, clf, ims_orig, labels, model, scheduler, device, reps=reps)
-        accuracy_adv = classify_and_evaluate_all_multigpu(args, clf, ims_adv, labels, model, scheduler, device, reps=reps)
+        accuracy_nat = classify_and_evaluate_all_multigpu(args, clf, ims_orig, labels, model, scheduler, rank, world_size, device, reps=reps)
+        accuracy_adv = classify_and_evaluate_all_multigpu(args, clf, ims_adv, labels, model, scheduler, rank, world_size, device, reps=reps)
         accuracies[reps] = accuracy_nat  # Store accuracy with reps as the key
         accuracies_adv[reps] = accuracy_adv
 
@@ -253,11 +312,13 @@ def parse_args_and_config():
     
     parser.add_argument('--data_type', type=str, default='cifar10', help='dataset to use')
     parser.add_argument('--batch_size', type=int, default=1, help='batch size')
+
+    parser.add_argument('--n_images', type=int, default=60, help='total saved images for eval')
     parser.add_argument('--image_size', type=int, default=32, help='image size')
     parser.add_argument('--start_batch', type=int, default=1, help='start batch number')
     parser.add_argument('--end_batch', type=int, default=20, help='end batch number')
     parser.add_argument('--exp_dir', type=str, default='./Result/', help='path to the save the experiment')
-    parser.add_argument('--exp_name', type=str, default='diffpure', choices=['ebm','hugging_face','diffpure','hf_DDPM','robust_diff'], help='path to the save the experiment')
+    parser.add_argument('--exp_name', type=str, default='ebm', choices=['ebm','hugging_face','diffpure','hf_DDPM','robust_diff'], help='path to the save the experiment')
     parser.add_argument('--model_data', type=str, default='cifar10', choices=['cifar10','food','cinic10'], help='dataset that the model pre-trained on')
 
     # EBM Arguments 
@@ -289,6 +350,7 @@ def parse_args_and_config():
     parser.add_argument('--unet_weight_path', default='./weights/cinic10_DDPM[250].pt', type=str, help='path to the model weights directory')
 
     # Adv Arguments
+    parser.add_argument('--use_saved_data', default=False, action='store_true', help='using saved data')
     parser.add_argument('--APGD', default=False, action='store_true', help='use APGD attack')
     parser.add_argument('--bpda_only', default=False, action='store_true', help='use BPDA only attack')
     parser.add_argument('--classifier_name', type=str, default='cifar10-wideresnet-28-10', choices=['wideresnet', 'cifar10-wideresnet-28-10'], help='which classifier to use')
@@ -306,7 +368,7 @@ def parse_args_and_config():
     parser.add_argument('--log_freq', type=int, default=20, help='frequency to print the eval result')
 
     # Validation
-    parser.add_argument('--reps_list', nargs='+', type=int, default=[1, 50, 100], help='List of replicas')
+    parser.add_argument('--reps_list', nargs='+', type=int, default=[1, 1, 1], help='List of replicas')
 
     # Parse the arguments
     args = parser.parse_args()
