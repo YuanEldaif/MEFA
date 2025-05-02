@@ -73,13 +73,13 @@ def robustness_eval(rank, args, config, world_size):
         random_flip=False
         )
     else:
-        results = '/home/yuandu/MEGA/data/data_eval.pth'
+        results = '/home/yu002972/MEGA/data/data_eval.pth'
         # Load saved tensors
         saved_data = torch.load(results)
-        ims_orig = saved_data['ims_orig'][:args.n_images]
-        labels = saved_data['labs'][:args.n_images]
+        ims_orig = saved_data['ims_orig']
+        labels = saved_data['labs']
         dataset = TensorDataset(ims_orig, labels)
-        attack_loader = DataLoader(dataset, batch_size=args.n_images, pin_memory=True, num_workers=0, shuffle=False)
+        attack_loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True, num_workers=0, shuffle=False)
 
     clf = get_classifier(args, rank, device)
 
@@ -113,10 +113,14 @@ def robustness_eval(rank, args, config, world_size):
 
     labs_device = torch.zeros(0).long().to(device)
     ims_orig_device = torch.zeros(0).to(device)
+    x_1st_adv_device = torch.zeros(0).to(device)
+    x_best_adv_device = torch.zeros(0).to(device)
     x_final_adv_device = torch.zeros(0).to(device)
     acc_device = torch.zeros(0).to(device)
     nat_acc_device = torch.zeros(0).to(device)
     grad_device = torch.zeros(0).to(device)
+    class_device = torch.zeros([args.adv_steps + 2, 0]).bool().to(device)
+    loss_device = torch.zeros([args.adv_steps + 2, 0]).to(device)
  
     # run adversarial attacks on samples from image bank in small batches
     if rank == 0:
@@ -142,9 +146,9 @@ def robustness_eval(rank, args, config, world_size):
             # attack images using setting in config
             start_time_diff = time.time()
             if args.APGD:
-                grad_batch, nat_acc, acc, ims_adv_final = attack_batch_auto(args, model, scheduler, clf, X_batch, y_batch, batch, device)
+                grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_best, ims_adv_final = attack_batch_auto(args, model, scheduler, clf, X_batch, y_batch, batch, device)
             else:
-                grad_batch, nat_acc, acc, ims_adv_final = attack_batch(args, model, scheduler, clf, X_batch, y_batch, batch, device)
+                grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_final = attack_batch(args, model, scheduler, clf, X_batch, y_batch, batch, device)
 
             if rank == 0:
                 minutes, seconds = divmod(time.time() - start_time_diff, 60)
@@ -155,6 +159,11 @@ def robustness_eval(rank, args, config, world_size):
 
             # update defense records
             grad_device = torch.cat((grad_device, grad_batch.to(device)), dim=0)
+            loss_device = torch.cat((loss_device, loss_batch.to(device)), dim=1)
+            class_device = torch.cat((class_device, class_batch.to(device)), dim=1)
+            x_1st_adv_device = torch.cat((x_1st_adv_device, ims_adv_first.to(device)), dim=0)
+            if args.APGD:
+                x_best_adv_device = torch.cat((x_best_adv_device, ims_adv_best.to(device)), dim=0)
             x_final_adv_device = torch.cat((x_final_adv_device, ims_adv_final.to(device)), dim=0)
             acc_device = torch.cat((acc_device, acc.to(device)), dim=0)
             nat_acc_device = torch.cat((nat_acc_device, nat_acc.to(device)), dim=0)
@@ -162,10 +171,15 @@ def robustness_eval(rank, args, config, world_size):
             # gather results across devices
             labs = gather_on_cpu(labs_device.float()).long()
             ims_orig = gather_on_cpu(ims_orig_device)
+            x_1st_adv = gather_on_cpu(x_1st_adv_device)
+            if args.APGD:
+                x_best_adv = gather_on_cpu(x_best_adv_device)
             x_final_adv = gather_on_cpu(x_final_adv_device)
             acc = gather_on_cpu(acc_device)
             nat_acc = gather_on_cpu(nat_acc_device)
             grad = gather_on_cpu(grad_device.float())
+            class_path = gather_on_cpu(class_device.float().transpose(1, 0).contiguous()).long().transpose(1, 0)
+            loss_path = gather_on_cpu(loss_device)
 
             if rank == 0:
                 print('Attack concluded on Batch {} of {}. Natural secured images {} of {}, Accuray {:.2f} \n------ Total Secure Images: {} of {}, Accuracy {:.4f} \n-----------'.
@@ -175,11 +189,15 @@ def robustness_eval(rank, args, config, world_size):
                 logger.log(f'Attack concluded on Batch {batch - args.start_batch + 2} of {args.end_batch - args.start_batch + 1}. Natural secured images {nat_acc.sum()} of {nat_acc.shape[0]}, \
                 Accuray {(nat_acc.sum()/nat_acc.shape[0]):.4f} \n------ Total Secure Images: {acc.sum()} of {acc.shape[0]}, Accuracy {(acc.sum()/acc.shape[0]):.4f} \n-----------')
                 # save attack info
+                if not args.APGD:
+                    x_best_adv=0
                 if args.bpda_only:
-                    torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_final_adv': x_final_adv, 'grad':grad},
+                    torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_1st_adv': x_1st_adv,'x_best_adv': x_best_adv, \
+                    'x_final_adv': x_final_adv, 'grad':grad, 'class_path': class_path, 'loss_path': loss_path},
                      args.exp_dir + f'/log/{args.model_data}_bpdattack_defense_reps{args.eot_defense_reps}.pth')
                 else: 
-                    torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_final_adv': x_final_adv, 'grad':grad},
+                    torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_1st_adv': x_1st_adv,'x_best_adv': x_best_adv, \
+                    'x_final_adv': x_final_adv, 'grad':grad, 'class_path': class_path, 'loss_path': loss_path},
                      args.exp_dir + f'/log/{args.model_data}_pgdattack_defense_reps{args.eot_defense_reps}.pth')
             dist.barrier()
             
@@ -322,7 +340,7 @@ def parse_args_and_config():
     parser.add_argument('--start_batch', type=int, default=1, help='start batch number')
     parser.add_argument('--end_batch', type=int, default=20, help='end batch number')
     parser.add_argument('--exp_dir', type=str, default='./Result/', help='path to the save the experiment')
-    parser.add_argument('--exp_name', type=str, default='ebm', choices=['ebm','hugging_face','diffpure','hf_DDPM','robust_diff'], help='path to the save the experiment')
+    parser.add_argument('--exp_name', type=str, default='diffpure', choices=['ebm','hugging_face','diffpure','hf_DDPM','robust_diff'], help='path to the save the experiment')
     parser.add_argument('--model_data', type=str, default='cifar10', choices=['cifar10','food','cinic10'], help='dataset that the model pre-trained on')
 
     # EBM Arguments 
@@ -360,19 +378,19 @@ def parse_args_and_config():
     parser.add_argument('--classifier_name', type=str, default='cifar10-wideresnet-28-10', choices=['wideresnet', 'cifar10-wideresnet-28-10'], help='which classifier to use')
     parser.add_argument('--clf_weight_path', type=str, default='./weights/clf.pth')
     parser.add_argument('--eot_defense_ave', type=str, default='logits', choices=['logits', 'softmax', 'logsoftmax'], help='choose defense logit prediction type')
-    parser.add_argument('--eot_attack_ave', type=str, default='logits', choices=['logits', 'softmax', 'logsoftmax'], help='choose attack ogit prediction type')
+    parser.add_argument('--eot_attack_ave', type=str, default='logits', choices=['logits', 'softmax', 'logsoftmax','DLR'], help='choose attack ogit prediction type')
     parser.add_argument('--adv_steps', type=int, default=100, help='number of attack steps')
     parser.add_argument('--adv_rand_start', default=False, action='store_true', help='attack random start')
     parser.add_argument('--adv_norm', type=str, default='Linf', choices=['Linf', 'L2'], help='attack norm')
-    parser.add_argument('--adv_eps', type=float, default=8*2/255, help='perturbation size linf 8*2/255 0.5*2')
-    parser.add_argument('--adv_eta', type=float, default=2*2/255, help='perturbation step size')
+    parser.add_argument('--adv_eps', type=float, default=8*2/255, help='perturbation size linf 8*2/255 l2:0.5*2 on [-1,1]')
+    parser.add_argument('--adv_eta', type=float, default=2*2/255, help='perturbation step size 16*2/255 for APGD')
     parser.add_argument('--eot_defense_reps', type=int, default=1, help='number of eot replicates for defense')
     parser.add_argument('--eot_attack_reps', type=int, default=20, help='number of eot replicates for attack')
     parser.add_argument('--grad_ckpt',  default=True, action='store_true',help='use gradiant check point for diffusion model')
     parser.add_argument('--log_freq', type=int, default=20, help='frequency to print the eval result')
 
     # Validation
-    parser.add_argument('--reps_list', nargs='+', type=int, default=[1, 1, 1], help='List of replicas')
+    parser.add_argument('--reps_list', nargs='+', type=int, default=[1, 30, 50, 100], help='List of replicas')
 
     # Parse the arguments
     args = parser.parse_args()

@@ -80,14 +80,16 @@ def reload_eval(rank, args, config, world_size):
     args.batch_size = 1
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-    results = '/home/yu002972/MEGA/Result/ebm/cifar10/2025_03_23_19_19/log/cifar10_pgdattack_defense_reps1.pth'
+    results = '/home/yu002972/MEGA/Result/diffpure/cifar10/2025_04_29_00_10/log/cifar10_pgdattack_defense_reps1.pth'
 
     # Load saved tensors
     saved_data = torch.load(results)
     ims_orig = saved_data['ims_orig']
-    ims_adv = saved_data['x_final_adv']
+    x_1st_adv = saved_data['x_1st_adv']
+    x_best_adv = saved_data['x_best_adv']
+    x_final_adv = saved_data['x_final_adv']
     labels = saved_data['labs']
-    
+
     # record of original images, adversarial images, and labels
     class Logger():
         def __init__(self, log_path):
@@ -99,19 +101,17 @@ def reload_eval(rank, args, config, world_size):
                 with open(self.log_path, 'a') as f:
                     f.write(str_to_log + '\n')
                     f.flush()
-    
     # Create Output Directory (add timestamp)
     args.exp_dir = os.path.join(args.exp_dir, f'{args.model_data}',time.strftime("%Y_%m_%d_%H_%M", time.localtime()))
     # setup seed, make folders and save code
-    setup_exp(args.exp_dir, args.seed, folder_list=['log'], code_file_list=['validation_standalone.py'], use_careful_setup=False)
+    setup_exp(args.exp_dir, args.seed, folder_list=['log'], code_file_list=['multi_state_validation_standalone.py'], use_careful_setup=False)
     log_path=f'{args.exp_dir}/log_validate.txt'
     logger = Logger(log_path)
-    
     if rank == 0:
-        logger.log('ims_adv shape:',ims_adv.shape)
+        logger.log('x_1st_adv shape:',x_1st_adv.shape)
         logger.log('labels shape:',labels.shape)
-        logger.log(f'min and max value: original min:{ims_orig.min()} max:{ims_orig.max()} and adv images:min:{ims_adv.min()} max:{ims_adv.max()}' )
-        logger.log(f'distance between original and adv image: {distance(ims_orig,ims_adv)}')
+        logger.log(f'min and max value: original min:{ims_orig.min()} max:{ims_orig.max()} and adv images:min:{x_1st_adv.min()} max:{x_1st_adv.max()}' )
+        logger.log(f'distance between original and x_1st_adv image: {distance(ims_orig,x_1st_adv)}')
 
 
     # Evaluate original and adversarial images
@@ -125,27 +125,33 @@ def reload_eval(rank, args, config, world_size):
     
     start_time_diff = time.time()
     accuracies = {}
-    accuracies_adv = {}
+    accuracies_x_1st_adv = {}
+    accuracies_x_best_adv = {}
+    accuracies_x_final_adv = {}
     for reps in args.reps_list:
         accuracy_nat, _, total = classify_and_evaluate_all(args, clf, ims_orig, labels, model, scheduler, rank, world_size, device, reps=reps)
-        accuracy_adv, _, _ = classify_and_evaluate_all(args, clf, ims_adv, labels, model, scheduler, rank, world_size, device, reps=reps)
+        accuracy_x_1st_adv, _, _ = classify_and_evaluate_all(args, clf, x_1st_adv, labels, model, scheduler, rank, world_size, device, reps=reps)
+        accuracy_x_best_adv, _, _ = classify_and_evaluate_all(args, clf, x_best_adv, labels, model, scheduler, rank, world_size, device, reps=reps)
+        accuracy_x_final_adv, _, _ = classify_and_evaluate_all(args, clf, x_final_adv, labels, model, scheduler, rank, world_size, device, reps=reps)
         accuracies[reps] = accuracy_nat  # Store accuracy with reps as the key
-        accuracies_adv[reps] = accuracy_adv
+        accuracies_x_1st_adv[reps] = accuracy_x_1st_adv
+        accuracies_x_best_adv[reps] = accuracy_x_best_adv
+        accuracies_x_final_adv[reps] = accuracy_x_final_adv
 
-    average_accuracy = np.mean(list(accuracies.values()))
-    std_deviation = np.std(list(accuracies.values()))
-    average_accuracy_adv = np.mean(list(accuracies_adv.values()))
-    std_deviation_adv = np.std(list(accuracies_adv.values()))
+
 
     if dist.get_rank() == 0:
         minutes, seconds = divmod(time.time() - start_time_diff, 60)
         logger.log(f'{total} image attack eval total time: {int(minutes):0>2}:{seconds:05.2f}')
         for reps, accuracy in accuracies.items():
             logger.log(f"Average Natural Accuracy for reps={reps}: {accuracy:.2f}%")
-        for reps, accuracy_adv in accuracies_adv.items():
-            logger.log(f"Average Adversarial Accuracy for reps={reps}: {accuracy_adv:.2f}%")
-        logger.log(f"Average Natural Accuracy: {average_accuracy:.2f}%; Adversarial Accuracy: {average_accuracy_adv:.2f}%")
-        logger.log(f"Standard Deviation of Natural Accuracy: {std_deviation:.2f}%; Adversarial Accuracy: {std_deviation_adv:.2f}%")
+        for reps, accuracy_x_1st_adv in accuracies_x_1st_adv.items():
+            logger.log(f"Average x_1st_adv Accuracy for reps={reps}: {accuracy_x_1st_adv:.2f}%")
+        for reps, accuracy_x_best_adv in accuracies_x_best_adv.items():
+            logger.log(f"Average x_best_adv Accuracy for reps={reps}: {accuracy_x_best_adv:.2f}%")
+        for reps, accuracy_x_final_adv in accuracies_x_final_adv.items():
+            logger.log(f"Average x_x_final_adv Accuracy for reps={reps}: {accuracy_x_final_adv:.2f}%")
+
 
     dist.barrier()
 

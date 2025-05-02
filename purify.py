@@ -44,7 +44,7 @@ from utils import create_hf_unet
 # ##   diffpure model  ## #
 ###########################
 def restore_checkpoint(ckpt_dir, state, device):
-    loaded_state = torch.load(ckpt_dir, map_location=torch.device('cpu'), weights_only=True)
+    loaded_state = torch.load(ckpt_dir, map_location=torch.device('cpu'))
     state['optimizer'].load_state_dict(loaded_state['optimizer'])
     state['model'].load_state_dict(loaded_state['model'], strict=False)
     state['ema'].load_state_dict(loaded_state['ema'])
@@ -661,11 +661,7 @@ def purify_and_predict(args, model, scheduler, clf, X, y, purify_reps=1, require
 
 def eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, requires_grad=True):
     # forward pass to identify candidates for breaks (and backward pass to get BPDA + EOT grad if requires_grad==True)
-    if requires_grad:
-        defended, attack_grad, loss, logitdiff = purify_and_predict(args, model, scheduler, clf, X_adv, y, args.eot_attack_reps, True)
-    else:
-        defended, attack_grad, loss, logitdiff = purify_and_predict(args, model, scheduler, clf, X_adv, y, args.eot_defense_reps, False)
-
+    defended, attack_grad, loss, logitdiff = purify_and_predict(args, model, scheduler, clf, X_adv, y, args.eot_attack_reps, requires_grad)
     return defended, attack_grad, loss, logitdiff 
 
 
@@ -684,6 +680,16 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
     # record of grad over attacks
     grad_batch = torch.zeros([args.adv_steps + 2, X.shape[0], X.shape[1], X.shape[2], X.shape[3]])
     grad_batch[0] = grad.cpu()
+
+    class_batch = torch.zeros([args.adv_steps + 2, X.shape[0]]).bool()
+    class_batch[0] = defended.cpu()
+
+    # record for final adversarial images 
+    ims_adv_batch = torch.zeros(X.shape)
+    for ind in range(defended.nelement()):
+        if defended[ind] == 0:
+            # record mis-classified natural images as adversarial states
+            ims_adv_batch[ind] = X[ind].cpu()
     
     # initialize adversarial image as natural image
     X_adv = X.clone()
@@ -692,9 +698,6 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
     if args.adv_rand_start:
         X_adv = rand_init_l_p(X_adv, args.adv_norm, args.adv_eps)
     
-    # record for final adversarial images 
-    ims_adv_final = torch.zeros(X.shape)
-
     nat_acc = defended.clone()
 
     x_best = X_adv.clone()
@@ -724,6 +727,8 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
     for step in range(args.adv_steps+1):
         # get attack gradient and update defense record
         defended, grad, loss, logitdiff = eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, True)
+        # update step-by-step defense record
+        class_batch[step+1] = defended.cpu()
         
         acc = torch.min(acc, defended)
         
@@ -731,6 +736,12 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
         grad_batch[step+1] = grad.cpu()
 
         X_adv, step_size, x_adv_old = pgd_update_autoattack(args, step, X_adv, x_adv_old, grad, X, args.adv_eps, step_size)
+        # add adversarial images for newly broken images to list
+        for ind in range(defended.nelement()):
+            if class_batch[step, ind] == 1 and defended[ind] == 0:
+                ims_adv_batch[ind] = X_adv[ind].cpu()
+        if step == args.adv_steps:
+            X_adv_final_batch = X_adv.detach().clone()
 
         ind_pred = (defended == 0).nonzero().squeeze()
         x_best_adv[ind_pred] = X_adv[ind_pred] + 0.
@@ -772,7 +783,12 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
                          step, args.adv_steps, int(torch.sum(defended).cpu().numpy()), X_adv.shape[0], int(torch.sum(acc).cpu().numpy())/X_adv.shape[0] ))
         dist.barrier()
 
-    return grad_batch, nat_acc, acc, x_best_adv
+        # record final adversarial image for unbroken states
+        for ind in range(defended.nelement()):
+            if defended[ind] == 1:
+                ims_adv_batch[ind] = X_adv[ind].cpu()
+
+    return grad_batch, class_batch, loss_best_steps, nat_acc, acc, ims_adv_batch, x_best_adv, X_adv_final_batch
 
 def attack_batch(args, model, scheduler, clf, X, y, batch_num, device):
     # Reset the memory tracker
@@ -788,13 +804,24 @@ def attack_batch(args, model, scheduler, clf, X, y, batch_num, device):
             format(batch_num - args.start_batch + 2, args.end_batch - args.start_batch+ 1,
                 defended.sum(), len(defended)))
     dist.barrier()
-    
+    # record of defense over attacks
+    class_batch = torch.zeros([args.adv_steps + 2, X.shape[0]]).bool()
+    class_batch[0] = defended.cpu()
+    loss_batch =  torch.empty([args.adv_steps + 2, X.shape[0]])
+    loss_batch[0] = loss 
     # record of grad over attacks
     grad_batch = torch.zeros([args.adv_steps + 2, X.shape[0], X.shape[1], X.shape[2], X.shape[3]])
     if grad == None:
         grad_batch[0] = 0
     else:
         grad_batch[0] = grad.cpu()
+
+    # record for final adversarial images 
+    ims_adv_batch = torch.zeros(X.shape)
+    for ind in range(defended.nelement()):
+        if defended[ind] == 0:
+            # record mis-classified natural images as adversarial states
+            ims_adv_batch[ind] = X[ind].cpu()
     # initialize adversarial image as natural image
     X_adv = X.clone()
     # start in random location of l_p ball
@@ -804,12 +831,22 @@ def attack_batch(args, model, scheduler, clf, X, y, batch_num, device):
     for step in range(args.adv_steps+1):
         # get attack gradient and update defense record
         defended, attack_grad, loss, logitdiff = eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, True)
+
+        loss_batch[step+1] = loss
+        # update step-by-step defense record
+        class_batch[step+1] = defended.cpu()
         
         if step < args.adv_steps:
-            X_adv = pgd_update(X_adv, attack_grad, X, args.adv_norm,  args.adv_eps, args.adv_eta)
+            X_adv = pgd_update(X_adv, attack_grad, X, args.adv_norm, args.adv_eps, args.adv_eta)
+        # add adversarial images for newly broken images to list
+        for ind in range(defended.nelement()):
+            if class_batch[step, ind] == 1 and defended[ind] == 0:
+                ims_adv_batch[ind] = X_adv[ind].cpu()
         if step == args.adv_steps:
-            X_adv_final = X_adv.detach().clone()
-            acc = torch.min(acc, defended)
+            X_adv_final_batch = X_adv.detach().clone()
+        
+        #update the accuracy for any brocken state
+        acc = torch.min(acc, defended)
 
         if dist.get_rank()==0 and (step == 1 or step % args.log_freq == 0 or step == args.adv_steps):
             # print attack info
@@ -817,9 +854,12 @@ def attack_batch(args, model, scheduler, clf, X, y, batch_num, device):
                   format(batch_num - args.start_batch + 2, args.end_batch - args.start_batch + 1,
                          step, args.adv_steps, int(torch.sum(defended).cpu().numpy()), X_adv.shape[0], int(torch.sum(defended).cpu().numpy())/X_adv.shape[0] ))
         dist.barrier()
-
-    return grad_batch, nat_acc, acc, X_adv_final
-                    
+        
+        # record final adversarial image for unbroken states
+        for ind in range(defended.nelement()):
+            if defended[ind] == 1:
+                ims_adv_batch[ind] = X_adv[ind].cpu()
+    return grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_batch, X_adv_final_batch
 
 
 
