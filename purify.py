@@ -730,7 +730,8 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
         # update step-by-step defense record
         class_batch[step+1] = defended.cpu()
         
-        acc = torch.min(acc, defended)
+        # acc = torch.min(acc, defended)
+        acc = defended
         
         # update step-by-step defense record
         grad_batch[step+1] = grad.cpu()

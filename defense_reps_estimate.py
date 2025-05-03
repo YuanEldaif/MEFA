@@ -180,6 +180,27 @@ def wrong_img(X, y, class_path, args, clf, model, scheduler, reps):
 
     return adv_class, ims_adv_batch, ims_label
 
+def correct_img(X, y, class_path, args, clf, model, scheduler, reps):
+    adv_class = torch.zeros(0).long()
+    ims_adv_list = []  # Use a list to dynamically store the adversarial images
+    ims_label = torch.zeros(0).long()
+
+    for ind in range(class_path.shape[1]):
+        if class_path[-1, ind] == 1:
+            correct, _, _, _ = purify_and_eval(args, clf, X[ind].unsqueeze(0), y[ind].unsqueeze(0), model, scheduler, reps)
+            print(f'correct item {correct.item()}')
+            adv_class = torch.cat((adv_class, correct.detach().cpu()), dim=0)  # Record correctness
+            if not correct.item():  # save if doesn't match with the class with adversarial images
+                ims_adv_list.append(X[ind].cpu())  # Append the image to the list
+                ims_label = torch.cat((ims_label, y[ind].unsqueeze(0).cpu()), dim=0)  # Append the label
+
+    if ims_adv_list:
+        ims_adv_batch = torch.stack(ims_adv_list)  # Stack the list into a tensor
+    else:
+        ims_adv_batch = torch.zeros(0, X.shape[1], X.shape[2], X.shape[3])  # Handle the case where no images are saved
+
+    return adv_class, ims_adv_batch, ims_label
+
 def reload_eval(rank, args, config, world_size): 
     # set up distribution
     setup_dist(rank, world_size)
@@ -187,14 +208,14 @@ def reload_eval(rank, args, config, world_size):
     args.batch_size = 1
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-    # results1 = '/home/yuandu/DREBM/Result/diffpure/log/results_defense_reps50_6_10.pth'
+    # results1 = '/home/yuandu/MEGA/data/cifar10_pgdattack_defense_reps1_60'
     # # Load saved tensors
     # saved_data1 = torch.load(results1)
     # # for key, value in saved_data.items():  # Iterate over key-value pairs
     # #     print(f'key: {key}')
     
     # ims_orig = saved_data1['ims_orig']
-    # ims_adv = saved_data1['ims_adv']
+    # ims_adv = saved_data1['x_final_adv']
     # labels = saved_data1['labs']
     # class_path = saved_data1['class_path']
     
@@ -227,45 +248,49 @@ def reload_eval(rank, args, config, world_size):
     
     #PartI
     # save the wrong predicted but later correct images in the validation
-    # reps = 150
-    # adv_class, ims_adv_batch, ims_label = wrong_img(ims_adv, labels, class_path, args, clf, model, scheduler, reps)
+    # reps = 50
+    # adv_class, ims_adv_batch, ims_label = correct_img(ims_adv, labels, class_path, args, clf, model, scheduler, reps)
     # torch.save({'ims_adv_batch': ims_adv_batch, 'ims_label': ims_label},
-    # args.exp_dir + f'/log/{args.model_data}_wrong_diff_reps{reps}.pth')
+    # args.exp_dir + f'/log/{args.model_data}_correct_diff_reps{reps}.pth')
     # logger.log(f'ims_adv_batch shape:{ims_adv_batch.shape}')
     # logger.log(f'ims_label shape:{ims_label.shape}')
     
     #PartII
-    results2 = '/home/yuandu/DREBM/Result/log/borderline_reps50_diff.pth'
+    results2 = '/home/yuandu/MEGA/Result/diffpure/cifar10/2025_05_02_15_32/log/cifar10_correct_diff_reps50.pth'
     # # Load saved tensors
     saved_data2 = torch.load(results2)
-    for key, value in saved_data.items():  # Iterate over key-value pairs
-        print(f'key: {key}')
+    # for key, value in saved_data2.items():  # Iterate over key-value pairs
+    #     print(f'key: {key}')
 
-    # ims_adv = saved_data2['ims_adv_batch']
-    # labels = saved_data2['ims_label']
+    ims_adv = saved_data2['ims_adv_batch']
+    labels = saved_data2['ims_label']
+    print(f'labels shape: {labels.shape}') #53 images
 
-    # # purify a stable base image, compare correct logit and 2nd choice logit
-    # index = 2
-    # times = 10000
-    # X = ims_adv[index].unsqueeze(0)
-    # y = labels[index]
-    # avg_acc, logit1_record, logit2_record = purify_times(X, y, args, clf, model, scheduler, times)
-    # logit1_mean, logit2_mean, logit1_std, logit2_std, sample_size = calculate_sample_size(logit1_record, logit2_record)
-    # plot(args, logit1_record, logit2_record, logit1_mean, logit2_mean, logit1_std, logit2_std, sample_size, times, avg_acc, index)
+    # purify a stable base image, compare correct logit and 2nd choice logit
+    #find the images where mu1>mu2:
+    # for index in range(len(labels)):
+    #     times = 30
+    #     X = ims_adv[index].unsqueeze(0)
+    #     y = labels[index]
+    #     avg_acc, logit1_record, logit2_record = purify_times(X, y, args, clf, model, scheduler, times)
+    #     logit1_mean, logit2_mean, logit1_std, logit2_std, sample_size = calculate_sample_size(logit1_record, logit2_record)
+    #     if logit1_mean>logit2_mean:
+    #         print(f'logit1_mean>logit2_mean: image index {index}')
+    #     plot(args, logit1_record, logit2_record, logit1_mean, logit2_mean, logit1_std, logit2_std, sample_size, times, avg_acc, index)
 
 
     #PartIII    
-    # index = 1 
-    # reps_list =[1,5,10,50,100]
-    # times1 = 10000 #the stable reference
-    # times2 = 100 #the validation times
-    # X = ims_adv[index].unsqueeze(0)
-    # y = labels[index]
-    # for reps in reps_list:
-    #     avg_agree = class_times(X, y, args, clf, model, scheduler, times1, times2, reps)
-    #     if dist.get_rank() == 0:
-    #         print(f'probablity to agree with the stable label prediction:{avg_agree:.2f}% for reps {reps} for image {index}')
-    #     logger.log(f'probablity to agree with the stable label prediction:{avg_agree:.2f}% for reps {reps} for image {index}')
+    index = 1 
+    reps_list =[1,5,10,50,100]
+    times1 = 10000 #the stable reference
+    times2 = 100 #the validation times
+    X = ims_adv[index].unsqueeze(0)
+    y = labels[index]
+    for reps in reps_list:
+        avg_agree = class_times(X, y, args, clf, model, scheduler, times1, times2, reps)
+        if dist.get_rank() == 0:
+            print(f'probablity to agree with the stable label prediction:{avg_agree:.2f}% for reps {reps} for image {index}')
+        logger.log(f'probablity to agree with the stable label prediction:{avg_agree:.2f}% for reps {reps} for image {index}')
 
     dist.barrier()
 
