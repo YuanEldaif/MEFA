@@ -138,20 +138,20 @@ def plot(args, logit1_record, logit2_record, logit1_mean, logit2_mean, logit1_st
     plt.close()
 
 
-def class_times(X, y, args, clf, model, scheduler, times1, times2, reps):
+def class_times(X, y, args, clf, model, scheduler, times1, times2, reps_list):
 
     agree_sum = 0  # Total count of correctly classified images
-
-    avg_acc, correct, y_pred = purify_times(X, y, args, clf, model, scheduler, times1)
+    avg_acc, correct, y_pred,_ ,_ = purify_times(X, y, args, clf, model, scheduler, times1)
     if dist.get_rank() == 0:
         print(f'avg_acc over {times1} times: {avg_acc:.2f}')
         print(f'Final prediction correct true or not false: {correct}')
     
-    for i in range(times2): 
-        correct_reps, logit1 = purify_and_eval(args, clf, X, y, model, scheduler, reps)
-        _, y_pred_reps = torch.max(logit1, 1)
-        agree = torch.eq(y_pred_reps.cpu(), y_pred.cpu())
-        agree_sum +=agree
+    for reps in reps_list:
+        for i in range(times2): 
+            correct_reps, logit1, _, _  = purify_and_eval(args, clf, X, y, model, scheduler, reps)
+            _, y_pred_reps = torch.max(logit1, 1)
+            agree = torch.eq(y_pred_reps.cpu(), y_pred.cpu())
+            agree_sum +=agree
 
     avg_agree = 100*agree_sum.sum()/times2
     
@@ -281,17 +281,15 @@ def reload_eval(rank, args, config, world_size):
 
     #PartIII    
     for index in range(len(labels)):
-        print(f'{len(labels)} image:')
-        reps_list =[1, 20, 50, 100, 150,200]
+        reps_list =[1,20,50,100]
         times1 = 10000 #the stable reference
         times2 = 100 #the validation times
         X = ims_adv[index].unsqueeze(0)
         y = labels[index]
-        for reps in reps_list:
-            avg_agree = class_times(X, y, args, clf, model, scheduler, times1, times2, reps)
+        avg_agree = class_times(X, y, args, clf, model, scheduler, times1, times2, reps_list)
             if dist.get_rank() == 0:
-                print(f'probablity to agree with the stable label prediction:{avg_agree:.2f}% for reps {reps} for image {index}')
-            logger.log(f'probablity to agree with the stable label prediction:{avg_agree:.2f}% for reps {reps} for image {index}')
+                print(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
+            logger.log(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
 
     dist.barrier()
 
