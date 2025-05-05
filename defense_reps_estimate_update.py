@@ -287,9 +287,9 @@ def reload_eval(rank, args, config, world_size):
         X = ims_adv[index].unsqueeze(0)
         y = labels[index]
         avg_agree = class_times(X, y, args, clf, model, scheduler, times1, times2, reps_list)
-            if dist.get_rank() == 0:
-                print(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
-            logger.log(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
+        if dist.get_rank() == 0:
+            print(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
+        logger.log(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
 
     dist.barrier()
 
