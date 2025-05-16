@@ -230,7 +230,7 @@ def robustness_eval(rank, args, config, world_size):
                     X_purified, x_pure_list, noi_pure_list, curr_ts, next_ts = purify(args, model, scheduler, X_repeat)
 
   
-                correct_adv, _, _= predict_logits(args, clf, X_purified, batch_labels, requires_grad=True, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')
+                correct_adv, _= predict(args, clf, X_purified, batch_labels, requires_grad=True, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')
                 correct_adv_sum = torch.cat((correct_adv_sum, correct_adv.to(device)), dim=0)
                 correct_adv_cpu = gather_on_cpu(correct_adv_sum)
 
@@ -250,7 +250,7 @@ def robustness_eval(rank, args, config, world_size):
     
     accuracies = {}
     accuracies_adv = {}
-    for reps in args.reps_list:
+    for reps in args.defense_reps_list:
         accuracy_nat = classify_and_evaluate_all_multigpu(args, clf, ims_orig, labels, model, scheduler, rank, world_size, device, reps=reps)
         accuracy_adv = classify_and_evaluate_all_multigpu(args, clf, ims_adv, labels, model, scheduler, rank, world_size, device, reps=reps)
         accuracies[reps] = accuracy_nat  # Store accuracy with reps as the key
