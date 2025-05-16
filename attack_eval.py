@@ -278,7 +278,7 @@ def parse_args_and_config():
     ### Setup Arguments ###
     # parser.add_argument('--config', type=str, required=True, help='Path to the config file')
     parser.add_argument('--seed', type=int, default=1234, help='seed for reproducibility')
-    parser.add_argument('--data_dir', default='/home/yuandu/MEGA/data/data_eval.pth', type=str, help='path to the data directory')
+    parser.add_argument('--data_dir', default='./data_eval.pth', type=str, help='path to the data directory')
     
     parser.add_argument('--data_type', type=str, default='cifar10', help='dataset to use')
     parser.add_argument('--batch_size', type=int, default=1, help='batch size')
@@ -338,7 +338,7 @@ def parse_args_and_config():
     # Report on the fly
     parser.add_argument('--first_broken', default=False, action='store_true', help='whether to report any first broken state for the accuracy')
     # Validation
-    parser.add_argument('--results_dir', default='/home/yuandu/MEGA/Result/ebm/cifar10/2025_05_15_21_03/log/cifar10_pgdattack_defense_reps1.pth', type=str, help='path to the saved results')
+    parser.add_argument('--results_dir', default='./log/cifar10_pgdattack_defense_reps1.pth', type=str, help='path to the saved results')
     parser.add_argument('--defense_reps_list', nargs='+', type=int, default=[1, 30, 50, 100], help='List of replicas')
     
 
