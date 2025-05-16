@@ -500,8 +500,7 @@ def eot_attack_loss(logits, y, reps=1, eot_attack_ave='loss', criterion = torch.
     loss = criterion(logits_loss, y_loss)
     return loss
 
-
-def predict_logits(args, clf, X, y, requires_grad=True, reps=1, eot_defense_ave=None, eot_attack_ave='loss'):
+def predict(args, clf, X, y, requires_grad=True, reps=1, eot_defense_ave=None, eot_attack_ave='loss'):
     if requires_grad:
         if args.classifier_name == 'wideresnet':
             logits = clf(X)
@@ -520,19 +519,7 @@ def predict_logits(args, clf, X, y, requires_grad=True, reps=1, eot_defense_ave=
     # loss for specified EOT attack averaging method
     loss = eot_attack_loss(logits, y, reps, eot_attack_ave)
     
-    # We use torch.arange to create indices for each batch and gather logits
-    batch_size = logits_pred.size(0)
-    
-    # Create a tensor of indices for the batch
-    indices = torch.arange(batch_size, device=X.device)
-    
-    # Extract the logits corresponding to the correct labels
-    correct_logits = logits[indices, y]
-    # Get top-1 
-    logit1, _ = torch.topk(logits_pred, 1, dim=1)
-    logitdiff = correct_logits - logit1
-    
-    return correct.detach(), loss, logitdiff
+    return correct.detach(), loss
 
 def rand_init_l_p(X_adv, adv_norm, adv_eps):
     # random initialization in l_inf or l_2 ball
@@ -629,7 +616,7 @@ def purify_and_predict(args, model, scheduler, clf, X, y, purify_reps=1, require
 
     if args.grad_ckpt:
         X_repeat_purified = torch.autograd.Variable(X_repeat_purified, requires_grad=True)
-    correct, loss, logitdiff = predict_logits(args, clf, X_repeat_purified, y, requires_grad, purify_reps,
+    correct, loss = predict(args, clf, X_repeat_purified, y, requires_grad, purify_reps,
                         args.eot_defense_ave, args.eot_attack_ave)                             
 
     if requires_grad:
@@ -654,9 +641,9 @@ def purify_and_predict(args, model, scheduler, clf, X, y, purify_reps=1, require
         # average gradients over parallel samples for EOT attack
         attack_grad = X_grads.view([purify_reps]+list(X.shape)).mean(dim=0)
 
-        return correct, attack_grad, loss, logitdiff
+        return correct, attack_grad, loss
     else:
-        return correct, None, loss, logitdiff
+        return correct, None, loss
 
 
 def eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, requires_grad=True):
@@ -665,7 +652,7 @@ def eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, requires_grad=
     return defended, attack_grad, loss, logitdiff 
 
 
-def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
+def attack_batch_apgd(args, model, scheduler, clf, X, y, batch_num, device):
     # Reset the memory tracker
     torch.cuda.reset_peak_memory_stats()
     # get baseline accuracy for natural images
@@ -789,7 +776,7 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
 
     return grad_batch, class_batch, loss_best_steps, nat_acc, acc, ims_adv_batch, x_best_adv
 
-def attack_batch(args, model, scheduler, clf, X, y, batch_num, device):
+def attack_batch_pgd(args, model, scheduler, clf, X, y, batch_num, device):
     # Reset the memory tracker
     torch.cuda.reset_peak_memory_stats()
     # get baseline accuracy for natural images

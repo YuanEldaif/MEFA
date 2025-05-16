@@ -65,7 +65,7 @@ def classify_and_evaluate_all(args, clf, images, labels, model, scheduler, rank,
                 X_purified, x_pure_list, noi_pure_list, curr_ts, next_ts = purify(args, model, scheduler, X_repeat)
 
   
-            correct_adv, _, _= predict_logits(args, clf, X_purified, batch_labels, requires_grad=True, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')
+            correct_adv, _= predict(args, clf, X_purified, batch_labels, requires_grad=True, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')
             correct_adv_sum = torch.cat((correct_adv_sum, correct_adv.to(device)), dim=0)
             correct_adv_cpu = gather_on_cpu(correct_adv_sum)
 
@@ -80,7 +80,7 @@ def reload_eval(rank, args, config, world_size):
     args.batch_size = 1
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-    results = '/home/yu002972/MEGA/Result/ebm/cifar10/2025_03_23_19_19/log/cifar10_pgdattack_defense_reps1.pth'
+    results = args.results_dir
 
     # Load saved tensors
     saved_data = torch.load(results)
@@ -108,8 +108,8 @@ def reload_eval(rank, args, config, world_size):
     logger = Logger(log_path)
     
     if rank == 0:
-        logger.log('ims_adv shape:',ims_adv.shape)
-        logger.log('labels shape:',labels.shape)
+        logger.log(f'ims_adv shape:{ims_adv.shape}')
+        logger.log(f'labels shape:{labels.shape}')
         logger.log(f'min and max value: original min:{ims_orig.min()} max:{ims_orig.max()} and adv images:min:{ims_adv.min()} max:{ims_adv.max()}' )
         logger.log(f'distance between original and adv image: {distance(ims_orig,ims_adv)}')
 
@@ -126,16 +126,12 @@ def reload_eval(rank, args, config, world_size):
     start_time_diff = time.time()
     accuracies = {}
     accuracies_adv = {}
-    for reps in args.reps_list:
+    for reps in args.defense_reps_list:
         accuracy_nat, _, total = classify_and_evaluate_all(args, clf, ims_orig, labels, model, scheduler, rank, world_size, device, reps=reps)
         accuracy_adv, _, _ = classify_and_evaluate_all(args, clf, ims_adv, labels, model, scheduler, rank, world_size, device, reps=reps)
         accuracies[reps] = accuracy_nat  # Store accuracy with reps as the key
         accuracies_adv[reps] = accuracy_adv
 
-    average_accuracy = np.mean(list(accuracies.values()))
-    std_deviation = np.std(list(accuracies.values()))
-    average_accuracy_adv = np.mean(list(accuracies_adv.values()))
-    std_deviation_adv = np.std(list(accuracies_adv.values()))
 
     if dist.get_rank() == 0:
         minutes, seconds = divmod(time.time() - start_time_diff, 60)
@@ -144,8 +140,7 @@ def reload_eval(rank, args, config, world_size):
             logger.log(f"Average Natural Accuracy for reps={reps}: {accuracy:.2f}%")
         for reps, accuracy_adv in accuracies_adv.items():
             logger.log(f"Average Adversarial Accuracy for reps={reps}: {accuracy_adv:.2f}%")
-        logger.log(f"Average Natural Accuracy: {average_accuracy:.2f}%; Adversarial Accuracy: {average_accuracy_adv:.2f}%")
-        logger.log(f"Standard Deviation of Natural Accuracy: {std_deviation:.2f}%; Adversarial Accuracy: {std_deviation_adv:.2f}%")
+
 
     dist.barrier()
 

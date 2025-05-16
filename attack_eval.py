@@ -73,7 +73,7 @@ def robustness_eval(rank, args, config, world_size):
         random_flip=False
         )
     else:
-        results = '/home/yu002972/MEGA/data/data_eval.pth'
+        results = args.data_dir 
         # Load saved tensors
         saved_data = torch.load(results)
         ims_orig = saved_data['ims_orig']
@@ -145,9 +145,9 @@ def robustness_eval(rank, args, config, world_size):
             # attack images using setting in config
             start_time_diff = time.time()
             if args.APGD:
-                grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_final = attack_batch_auto(args, model, scheduler, clf, X_batch, y_batch, batch, device)
+                grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_final = attack_batch_apgd(args, model, scheduler, clf, X_batch, y_batch, batch, device)
             else:
-                grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_final = attack_batch(args, model, scheduler, clf, X_batch, y_batch, batch, device)
+                grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_final = attack_batch_pgd(args, model, scheduler, clf, X_batch, y_batch, batch, device)
 
             if rank == 0:
                 minutes, seconds = divmod(time.time() - start_time_diff, 60)
@@ -187,45 +187,12 @@ def robustness_eval(rank, args, config, world_size):
                 if args.bpda_only:
                     torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_1st_adv': x_1st_adv, \
                     'x_final_adv': x_final_adv, 'grad':grad, 'class_path': class_path, 'loss_path': loss_path},
-                     args.exp_dir + f'/log/{args.model_data}_bpdattack_defense_reps{args.eot_defense_reps}.pth')
+                     args.exp_dir + f'/log/{args.model_data}_bpdattack.pth')
                 else: 
                     torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_1st_adv': x_1st_adv, \
                     'x_final_adv': x_final_adv, 'grad':grad, 'class_path': class_path, 'loss_path': loss_path},
-                     args.exp_dir + f'/log/{args.model_data}_pgdattack_defense_reps{args.eot_defense_reps}.pth')
+                     args.exp_dir + f'/log/{args.model_data}_pgdattack.pth')
             dist.barrier()
-            
-    def classify_and_evaluate_all(args, clf, images, labels, model, scheduler, device, reps):
-        dataset = TensorDataset(images, labels)
-        # sampler = torch.utils.data.distributed.DistributedSampler(dataset,num_replicas=world_size,rank=rank)
-        loader = DataLoader(dataset,batch_size=args.batch_size,num_workers=0,pin_memory=True,drop_last=False,shuffle=False)
-        # Set end_batch based on the number of batches
-        num_batches = len(loader)
-        args.end_batch = num_batches
-        total = num_batches*args.batch_size
-        print(f"Number of batches: {num_batches}")
-        print(f"end_batch set to: {args.end_batch}")
-        print(f"batch_size: {args.batch_size}")
-        print(f"total: {total}")
-
-        correct_adv_sum = 0
-    
-        for batch, (X_batch, y_batch) in enumerate(loader):
-            if (batch + 1) < args.start_batch:
-                continue
-            elif (batch + 1) > args.end_batch:
-                break
-            else:
-                batch_images = X_batch.to(device)
-                batch_labels = y_batch.to(device)
-                X_repeat = batch_images.repeat([reps, 1, 1, 1])
-                args.pytorch == False
-                X_repeat_purified, x_pure_list, noi_pure_list, curr_ts, next_ts = purify(args, model, scheduler, X_repeat)
-  
-                correct_adv, _, _= predict_logits(args, clf, X_repeat_purified, batch_labels, requires_grad=False, reps=reps, eot_defense_ave='logits', eot_attack_ave='logits')
-                correct_adv_sum += correct_adv.sum().item()    
-
-        accuracy_adv = 100 * correct_adv_sum / total
-        return accuracy_adv
 
     def classify_and_evaluate_all_multigpu(args, clf, images, labels, model, scheduler, rank, world_size, device, reps):
         dataset = TensorDataset(images, labels)
@@ -279,9 +246,9 @@ def robustness_eval(rank, args, config, world_size):
         return accuracy_adv
 
     if args.bpda_only:
-        results = args.exp_dir + f'/log/{args.model_data}_bpdattack_defense_reps{args.eot_defense_reps}.pth'
+        results = args.exp_dir + f'/log/{args.model_data}_bpdattack.pth'
     else: 
-        results = args.exp_dir + f'/log/{args.model_data}_pgdattack_defense_reps{args.eot_defense_reps}.pth'
+        results = args.exp_dir + f'/log/{args.model_data}_pgdattack.pth'
     # Load saved tensors
     saved_data = torch.load(results)
     ims_orig = saved_data['ims_orig']
@@ -296,10 +263,6 @@ def robustness_eval(rank, args, config, world_size):
         accuracies[reps] = accuracy_nat  # Store accuracy with reps as the key
         accuracies_adv[reps] = accuracy_adv
 
-    average_accuracy = np.mean(list(accuracies.values()))
-    std_deviation = np.std(list(accuracies.values()))
-    average_accuracy_adv = np.mean(list(accuracies_adv.values()))
-    std_deviation_adv = np.std(list(accuracies_adv.values()))
 
     if dist.get_rank() == 0:
         minutes, seconds = divmod(time.time() - start_time_total, 60)
@@ -308,8 +271,7 @@ def robustness_eval(rank, args, config, world_size):
             logger.log(f"Average Natural Accuracy for reps={reps}: {accuracy:.2f}%")
         for reps, accuracy_adv in accuracies_adv.items():
             logger.log(f"Average Adversarial Accuracy for reps={reps}: {accuracy_adv:.2f}%")
-        logger.log(f"Average Natural Accuracy: {average_accuracy:.2f}%; Adversarial Accuracy: {average_accuracy_adv:.2f}%")
-        logger.log(f"Standard Deviation of Natural Accuracy: {std_deviation:.2f}%; Adversarial Accuracy: {std_deviation_adv:.2f}%")
+
 
     dist.barrier()
 
@@ -323,12 +285,11 @@ def parse_args_and_config():
     ### Setup Arguments ###
     # parser.add_argument('--config', type=str, required=True, help='Path to the config file')
     parser.add_argument('--seed', type=int, default=1234, help='seed for reproducibility')
-    parser.add_argument('--data_dir', default='/home/yuandu/MEGA/data/cifar10_pt_custom/val/', type=str, help='path to the data directory')
+    parser.add_argument('--data_dir', default='/home/yuandu/MEGA/data/data_eval.pth', type=str, help='path to the data directory')
     
     parser.add_argument('--data_type', type=str, default='cifar10', help='dataset to use')
     parser.add_argument('--batch_size', type=int, default=1, help='batch size')
 
-    parser.add_argument('--n_images', type=int, default=60, help='total saved images for eval')
     parser.add_argument('--image_size', type=int, default=32, help='image size')
     parser.add_argument('--start_batch', type=int, default=1, help='start batch number')
     parser.add_argument('--end_batch', type=int, default=20, help='end batch number')
@@ -377,13 +338,14 @@ def parse_args_and_config():
     parser.add_argument('--adv_norm', type=str, default='Linf', choices=['Linf', 'L2'], help='attack norm')
     parser.add_argument('--adv_eps', type=float, default=8*2/255, help='perturbation size linf 8*2/255 l2:0.5*2 on [-1,1]')
     parser.add_argument('--adv_eta', type=float, default=2*2/255, help='perturbation step size 16*2/255 for APGD')
-    parser.add_argument('--eot_defense_reps', type=int, default=1, help='number of eot replicates for defense')
     parser.add_argument('--eot_attack_reps', type=int, default=20, help='number of eot replicates for attack')
     parser.add_argument('--grad_ckpt',  default=True, action='store_true',help='use gradiant check point for diffusion model')
     parser.add_argument('--log_freq', type=int, default=20, help='frequency to print the eval result')
 
     # Validation
-    parser.add_argument('--reps_list', nargs='+', type=int, default=[1, 30, 50, 100], help='List of replicas')
+    parser.add_argument('--results_dir', default='/home/yuandu/MEGA/Result/ebm/cifar10/2025_05_15_21_03/log/cifar10_pgdattack_defense_reps1.pth', type=str, help='path to the saved results')
+    parser.add_argument('--defense_reps_list', nargs='+', type=int, default=[1, 30, 50, 100], help='List of replicas')
+    
 
     # Parse the arguments
     args = parser.parse_args()
