@@ -1,0 +1,8 @@
+trampoline
+robustbench @ git+https://github.com/RobustBench/robustbench.git
+lmdb
+ninja
+Scipy
+tensorflow
+matplotlib
+diffusers
