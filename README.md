@@ -22,19 +22,19 @@ The sampled 510 CIFAR-10 data for all core experiments is also provided in the `
 ## Attack Process Code
 MEFA attack in Algorithm 1 of our paper is implemented by ``attack_eval.py``.
 
-MEFA framework PGD+EOT20 attack against score SED-based defense on CIFAR-10 with WideResNet-28-10 under Linf attack:
+MEFA framework PGD+EOT20 attack against score SED-based defense on CIFAR-10 with WideResNet-28-10:
 ```python
 python3 attack_eval.py --exp_name 'diffpure'  
 ```
-MEFA framework PGD+EOT20 attack against DDPM-based defense on CIFAR-10 with WideResNet-28-10 under Linf attack:
+MEFA framework PGD+EOT20 attack against DDPM-based defense on CIFAR-10 with WideResNet-28-10:
 ```python
 python3 attack_eval.py --exp_name 'hf_DDPM'
 ```
-MEFA framework PGD+EOT20 attack against DDPM-based OOD defense on CINIC10 or FOOD with WideResNet-28-10 under Linf attack:
+MEFA framework PGD+EOT20 attack against DDPM-based OOD defense on CINIC10 or FOOD with WideResNet-28-10:
 ```python
 python3 attack_eval.py --exp_name 'hugging_face'
 ```
-MEFA framework PGD+EOT20 attack against EBM-based defense on CIFAR-10 with WideResNet-28-10 under Linf attack:
+MEFA framework PGD+EOT20 attack against EBM-based defense on CIFAR-10 with WideResNet-28-10:
 ```python
 python3 attack_eval.py --exp_name 'ebm'
 ```
