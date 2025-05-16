@@ -292,7 +292,7 @@ def parse_args_and_config():
 
     parser.add_argument('--image_size', type=int, default=32, help='image size')
     parser.add_argument('--start_batch', type=int, default=1, help='start batch number')
-    parser.add_argument('--end_batch', type=int, default=20, help='end batch number')
+    parser.add_argument('--end_batch', type=int, default=170, help='end batch number')
     parser.add_argument('--exp_dir', type=str, default='./Result/', help='path to the save the experiment')
     parser.add_argument('--exp_name', type=str, default='diffpure', choices=['ebm','diffpure','hf_DDPM','hugging_face'], help='path to the save the experiment')
     parser.add_argument('--model_data', type=str, default='cifar10', choices=['cifar10','food','cinic10'], help='dataset that the model pre-trained on')
@@ -303,7 +303,7 @@ def parse_args_and_config():
     parser.add_argument('--langevin_eps', type=float, default=1e-2, help='Sampling epsilon')
     parser.add_argument('--langevin_init_noise', type=float, default=1.5e-2, help='Sampling epsilon') 
     parser.add_argument('--ebm_weight_path', default='./weights/smooth_small_ebm_softrelu.pth', type=str, help='path to the model weights directory')
-    parser.add_argument('--pytorch', default=False, action='store_true', help='use pytorch attack')
+    parser.add_argument('--pytorch', default=False, action='store_true', help='use pytorch attack for backprop with limited steps and memory issue for testing')
 
     # Diffusion Arguments
     # diffpure
@@ -332,7 +332,7 @@ def parse_args_and_config():
     parser.add_argument('--classifier_name', type=str, default='cifar10-wideresnet-28-10', choices=['wideresnet', 'cifar10-wideresnet-28-10'], help='which classifier to use')
     parser.add_argument('--clf_weight_path', type=str, default='./weights/clf.pth')
     parser.add_argument('--eot_defense_ave', type=str, default='logits', choices=['logits', 'softmax', 'logsoftmax'], help='choose defense logit prediction type')
-    parser.add_argument('--eot_attack_ave', type=str, default='logits', choices=['logits', 'softmax', 'logsoftmax','DLR'], help='choose attack ogit prediction type')
+    parser.add_argument('--eot_attack_ave', type=str, default='logits', choices=['logits', 'softmax', 'logsoftmax'], help='choose attack ogit prediction type')
     parser.add_argument('--adv_steps', type=int, default=100, help='number of attack steps')
     parser.add_argument('--adv_rand_start', default=False, action='store_true', help='attack random start')
     parser.add_argument('--adv_norm', type=str, default='Linf', choices=['Linf', 'L2'], help='attack norm')
@@ -342,6 +342,8 @@ def parse_args_and_config():
     parser.add_argument('--grad_ckpt',  default=True, action='store_true',help='use gradiant check point for diffusion model')
     parser.add_argument('--log_freq', type=int, default=20, help='frequency to print the eval result')
 
+    # Report on the fly
+    parser.add_argument('--first_broken', default=False, action='store_true', help='whether to report any first broken state for the accuracy')
     # Validation
     parser.add_argument('--results_dir', default='/home/yuandu/MEGA/Result/ebm/cifar10/2025_05_15_21_03/log/cifar10_pgdattack_defense_reps1.pth', type=str, help='path to the saved results')
     parser.add_argument('--defense_reps_list', nargs='+', type=int, default=[1, 30, 50, 100], help='List of replicas')

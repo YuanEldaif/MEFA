@@ -717,8 +717,10 @@ def attack_batch_apgd(args, model, scheduler, clf, X, y, batch_num, device):
         # update step-by-step defense record
         class_batch[step+1] = defended.cpu()
         
-        # acc = torch.min(acc, defended)
-        acc = defended
+        if args.first_broken:
+            acc = torch.min(acc, defended)
+        else:
+            acc = defended
         
         # update step-by-step defense record
         grad_batch[step+1] = grad.cpu()
@@ -832,7 +834,10 @@ def attack_batch_pgd(args, model, scheduler, clf, X, y, batch_num, device):
             X_adv_final_batch = X_adv.detach().clone()
         
         #update the accuracy for any brocken state
-        acc = torch.min(acc, defended)
+        if args.first_broken:
+            acc = torch.min(acc, defended)
+        else:
+            acc = defended
 
         if dist.get_rank()==0 and (step == 1 or step % args.log_freq == 0 or step == args.adv_steps):
             # print attack info
