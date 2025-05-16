@@ -648,15 +648,15 @@ def purify_and_predict(args, model, scheduler, clf, X, y, purify_reps=1, require
 
 def eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, requires_grad=True):
     # forward pass to identify candidates for breaks (and backward pass to get BPDA + EOT grad if requires_grad==True)
-    defended, attack_grad, loss, logitdiff = purify_and_predict(args, model, scheduler, clf, X_adv, y, args.eot_attack_reps, requires_grad)
-    return defended, attack_grad, loss, logitdiff 
+    defended, attack_grad, loss = purify_and_predict(args, model, scheduler, clf, X_adv, y, args.eot_attack_reps, requires_grad)
+    return defended, attack_grad, loss 
 
 
 def attack_batch_apgd(args, model, scheduler, clf, X, y, batch_num, device):
     # Reset the memory tracker
     torch.cuda.reset_peak_memory_stats()
     # get baseline accuracy for natural images
-    defended, grad, loss, logitdiff = eval_and_bpda_eot_grad(args, model, scheduler, clf, X, y, True)
+    defended, grad, loss= eval_and_bpda_eot_grad(args, model, scheduler, clf, X, y, True)
 
     if dist.get_rank() == 0:
         print('Batch {} of {} Baseline: {} of {}'.
@@ -713,7 +713,7 @@ def attack_batch_apgd(args, model, scheduler, clf, X, y, batch_num, device):
     
     for step in range(args.adv_steps+1):
         # get attack gradient and update defense record
-        defended, grad, loss, logitdiff = eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, True)
+        defended, grad, loss = eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, True)
         # update step-by-step defense record
         class_batch[step+1] = defended.cpu()
         
@@ -780,7 +780,7 @@ def attack_batch_pgd(args, model, scheduler, clf, X, y, batch_num, device):
     # Reset the memory tracker
     torch.cuda.reset_peak_memory_stats()
     # get baseline accuracy for natural images
-    defended, grad, loss, logitdiff  = eval_and_bpda_eot_grad(args, model, scheduler, clf, X, y, False)
+    defended, grad, loss  = eval_and_bpda_eot_grad(args, model, scheduler, clf, X, y, False)
 
     nat_acc = defended.clone()
     acc = defended
@@ -816,7 +816,7 @@ def attack_batch_pgd(args, model, scheduler, clf, X, y, batch_num, device):
     
     for step in range(args.adv_steps+1):
         # get attack gradient and update defense record
-        defended, attack_grad, loss, logitdiff = eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, True)
+        defended, attack_grad, loss = eval_and_bpda_eot_grad(args, model, scheduler, clf, X_adv, y, True)
 
         loss_batch[step+1] = loss
         # update step-by-step defense record
