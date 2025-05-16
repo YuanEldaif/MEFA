@@ -5,7 +5,7 @@ We propose MEFA Framework to evaluate iterative stochastic purification defenses
 
 **NOTE**: All configs and arguments use the pixel range [0, 255] for adversarial perturbation adv_eps and attack step size adv_eta. However, all experiments scale images so that the pixels range is [-1, 1]. Adversarial parameters are scaled accordingly during execution. The Langevin step size langevin_eps in the arguments uses the pixel range [-1, 1].
 ## Environment and Pretrained models
-Please refer to ``requirement.txt`` for the required packages of running the codes in the repo.
+Please refer to ``requirements.txt`` for the required packages of running the codes in the repo.
 
 Put model pre-trained models under ``weights/diffpure`` for score SDE-based defenses, ``weights/`` for EBM defenses and DDPM-based OOD defenses. 
 
