@@ -49,6 +49,10 @@ MEFA framework validation against DDPM-based defense on CIFAR-10 with WideResNet
 ```python
 python3 validation_standalone.py --exp_name 'hf_DDPM'  
 ```
+MEFA framework validation against DDPM-based OOD defense on CIFAR-10 with WideResNet-28-10:
+```python
+python3 validation_standalone.py --exp_name 'hugging_face'  
+```
 MEFA framework validation against EBM-based defense on CIFAR-10 with WideResNet-28-10:
 ```python
 python3 validation_standalone.py --exp_name 'ebm'  
