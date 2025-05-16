@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""Attack Eval Diffpure sdeint_ajointorch.ipynb
-
-Original file is located at
-    https://colab.research.google.com/drive/1SENd02GSuWx2NlSF5onXms0ojC43PwKB
-"""
-
 import torch
 import torchsde
 import torch.nn.functional as F
