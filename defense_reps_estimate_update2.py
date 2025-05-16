@@ -156,23 +156,25 @@ def plot(args, logit1_record, logit2_record, logit1_mean, logit2_mean, logit1_st
     plt.close()
 
 
-def class_times(X, y, args, clf, model, scheduler, times1, times2, reps_list, index):
+def class_times(X, y, args, clf, model, scheduler, times1, times2, reps_list, index, logger):
 
-    agree_sum = 0  # Total count of correctly classified images
+    
     avg_acc, correct, y_pred = purify_times(X, y, args, clf, model, scheduler, times1)
-    print(f'avg_acc over {times1} times: {avg_acc:.2f}')
-    print(f'Final prediction correct true or not false: {correct}')
+    logger.log(f'avg_acc over {times1} times: {avg_acc:.2f}')
+    logger.log(f'Final prediction correct true or not false: {correct}')
     
     for reps in reps_list:
+        agree_sum = 0  # Total count of correctly classified images
         for i in range(times2): 
             correct_reps, logit1  = purify_and_eval(args, clf, X, y, model, scheduler, reps)
             _, y_pred_reps = torch.max(logit1, 1)
             agree = torch.eq(y_pred_reps.cpu(), y_pred.cpu())
             agree_sum +=agree
         avg_agree = 100*agree_sum.sum()/times2
-        print(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
+        logger.log(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
 
-
+    
+    return avg_agree
 
 def wrong_img(X, y, class_path, args, clf, model, scheduler, reps):
     adv_class = torch.zeros(0).long()
@@ -272,7 +274,7 @@ def reload_eval(args, config):
     # logger.log(f'ims_label shape:{ims_label.shape}')
     
     #PartII
-    results2 = '/home/yuandu/MEGA/Result/diffpure/cifar10/2025_05_02_14_26/log/cifar10_wrong_diff_reps50.pth'
+    results2 = '/home/yuandu/MEGA/data/cifar10_wrong_diff_reps50_1st.pth'
     # # Load saved tensors
     saved_data2 = torch.load(results2)
     # for key, value in saved_data2.items():  # Iterate over key-value pairs
@@ -298,14 +300,16 @@ def reload_eval(args, config):
 
 
     #PartIII    
-    for index in range(len(labels)):
+    for index in range(4,len(labels)):
         reps_list =[1,20,50,100]
-        times1 = 10000 #the stable reference
+        times1 = 1000 #the stable reference
         times2 = 100 #the validation times
         X = ims_adv[index].unsqueeze(0)
         y = labels[index]
-        class_times(X, y, args, clf, model, scheduler, times1, times2, reps_list, index)
-
+        avg_agree = class_times(X, y, args, clf, model, scheduler, times1, times2, reps_list, index, logger)
+        # if dist.get_rank() == 0:
+            # print(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {reps} for image {index}')
+        # logger.log(f'probablity to agree with the stable label prediction running {times2} times:{avg_agree:.2f}% for reps {times1} for image {index}')
 
     # dist.barrier()
 

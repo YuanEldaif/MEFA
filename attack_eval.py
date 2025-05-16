@@ -114,7 +114,6 @@ def robustness_eval(rank, args, config, world_size):
     labs_device = torch.zeros(0).long().to(device)
     ims_orig_device = torch.zeros(0).to(device)
     x_1st_adv_device = torch.zeros(0).to(device)
-    x_best_adv_device = torch.zeros(0).to(device)
     x_final_adv_device = torch.zeros(0).to(device)
     acc_device = torch.zeros(0).to(device)
     nat_acc_device = torch.zeros(0).to(device)
@@ -146,7 +145,7 @@ def robustness_eval(rank, args, config, world_size):
             # attack images using setting in config
             start_time_diff = time.time()
             if args.APGD:
-                grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_best, ims_adv_final = attack_batch_auto(args, model, scheduler, clf, X_batch, y_batch, batch, device)
+                grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_final = attack_batch_auto(args, model, scheduler, clf, X_batch, y_batch, batch, device)
             else:
                 grad_batch, class_batch, loss_batch, nat_acc, acc, ims_adv_first, ims_adv_final = attack_batch(args, model, scheduler, clf, X_batch, y_batch, batch, device)
 
@@ -162,8 +161,6 @@ def robustness_eval(rank, args, config, world_size):
             loss_device = torch.cat((loss_device, loss_batch.to(device)), dim=1)
             class_device = torch.cat((class_device, class_batch.to(device)), dim=1)
             x_1st_adv_device = torch.cat((x_1st_adv_device, ims_adv_first.to(device)), dim=0)
-            if args.APGD:
-                x_best_adv_device = torch.cat((x_best_adv_device, ims_adv_best.to(device)), dim=0)
             x_final_adv_device = torch.cat((x_final_adv_device, ims_adv_final.to(device)), dim=0)
             acc_device = torch.cat((acc_device, acc.to(device)), dim=0)
             nat_acc_device = torch.cat((nat_acc_device, nat_acc.to(device)), dim=0)
@@ -172,8 +169,6 @@ def robustness_eval(rank, args, config, world_size):
             labs = gather_on_cpu(labs_device.float()).long()
             ims_orig = gather_on_cpu(ims_orig_device)
             x_1st_adv = gather_on_cpu(x_1st_adv_device)
-            if args.APGD:
-                x_best_adv = gather_on_cpu(x_best_adv_device)
             x_final_adv = gather_on_cpu(x_final_adv_device)
             acc = gather_on_cpu(acc_device)
             nat_acc = gather_on_cpu(nat_acc_device)
@@ -189,14 +184,12 @@ def robustness_eval(rank, args, config, world_size):
                 logger.log(f'Attack concluded on Batch {batch - args.start_batch + 2} of {args.end_batch - args.start_batch + 1}. Natural secured images {nat_acc.sum()} of {nat_acc.shape[0]}, \
                 Accuray {(nat_acc.sum()/nat_acc.shape[0]):.4f} \n------ Total Secure Images: {acc.sum()} of {acc.shape[0]}, Accuracy {(acc.sum()/acc.shape[0]):.4f} \n-----------')
                 # save attack info
-                if not args.APGD:
-                    x_best_adv=0
                 if args.bpda_only:
-                    torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_1st_adv': x_1st_adv,'x_best_adv': x_best_adv, \
+                    torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_1st_adv': x_1st_adv, \
                     'x_final_adv': x_final_adv, 'grad':grad, 'class_path': class_path, 'loss_path': loss_path},
                      args.exp_dir + f'/log/{args.model_data}_bpdattack_defense_reps{args.eot_defense_reps}.pth')
                 else: 
-                    torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_1st_adv': x_1st_adv,'x_best_adv': x_best_adv, \
+                    torch.save({'ims_orig': ims_orig, 'labs': labs, 'nat_acc': nat_acc, 'acc': acc, 'x_1st_adv': x_1st_adv, \
                     'x_final_adv': x_final_adv, 'grad':grad, 'class_path': class_path, 'loss_path': loss_path},
                      args.exp_dir + f'/log/{args.model_data}_pgdattack_defense_reps{args.eot_defense_reps}.pth')
             dist.barrier()
@@ -340,7 +333,7 @@ def parse_args_and_config():
     parser.add_argument('--start_batch', type=int, default=1, help='start batch number')
     parser.add_argument('--end_batch', type=int, default=20, help='end batch number')
     parser.add_argument('--exp_dir', type=str, default='./Result/', help='path to the save the experiment')
-    parser.add_argument('--exp_name', type=str, default='diffpure', choices=['ebm','hugging_face','diffpure','hf_DDPM','robust_diff'], help='path to the save the experiment')
+    parser.add_argument('--exp_name', type=str, default='diffpure', choices=['ebm','diffpure','hf_DDPM','hugging_face'], help='path to the save the experiment')
     parser.add_argument('--model_data', type=str, default='cifar10', choices=['cifar10','food','cinic10'], help='dataset that the model pre-trained on')
 
     # EBM Arguments 

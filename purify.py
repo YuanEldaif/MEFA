@@ -392,7 +392,7 @@ def get_classifier(args, rank, device):
             if rank == 0:
                 num_params = sum(p.numel() for p in clf.parameters())
                 print('Creating widerenet from robustbench for image size {} with {} parameters'.format(args.image_size, num_params))
-            dist.barrier()
+            # dist.barrier()
     return clf
 
 ## load purify model
@@ -741,8 +741,6 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
         for ind in range(defended.nelement()):
             if class_batch[step, ind] == 1 and defended[ind] == 0:
                 ims_adv_batch[ind] = X_adv[ind].cpu()
-        if step == args.adv_steps:
-            X_adv_final_batch = X_adv.detach().clone()
 
         ind_pred = (defended == 0).nonzero().squeeze()
         x_best_adv[ind_pred] = X_adv[ind_pred] + 0.
@@ -789,7 +787,7 @@ def attack_batch_auto(args, model, scheduler, clf, X, y, batch_num, device):
             if defended[ind] == 1:
                 ims_adv_batch[ind] = X_adv[ind].cpu()
 
-    return grad_batch, class_batch, loss_best_steps, nat_acc, acc, ims_adv_batch, x_best_adv, X_adv_final_batch
+    return grad_batch, class_batch, loss_best_steps, nat_acc, acc, ims_adv_batch, x_best_adv
 
 def attack_batch(args, model, scheduler, clf, X, y, batch_num, device):
     # Reset the memory tracker
