@@ -1,4 +1,4 @@
-# Code for **Memory Efficient Full-gradient Attacks (MEFA) Framework for Adversarial Defense Evaluations**
+# **Memory Efficient Full-gradient Attacks (MEFA) Framework for Adversarial Defense Evaluations**
 This repository contains PyTorch implementations of main experiments from our paper.
 
 We propose MEFA Framework to evaluate iterative stochastic purification defenses.
