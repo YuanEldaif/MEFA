@@ -11,7 +11,7 @@ Put model pre-trained models under ``weights/diffpure`` for score SDE-based defe
 
 A pre-trained DDPM ```ddpm_cinic10.pth```, ```ddpm_food.pth``` for CINIC10 and FOOD respectively, and smooth EBM ```ebm.pth``` for CIFAR-10 are provided in the ```release``` section of the repository.
 
-The sampled 510 CIFAR-10 data for all core experiments is also provided in the ```release``` section of the repository.
+The sampled 510 CIFAR-10 data for all core experiments is also provided in the ```release``` section of the repository. Put the data under ``data/``. 
 ## Attack Process Code
 MEFA attack in Algorithm 1 of our paper is implemented by ``attack_eval.py``.
 
