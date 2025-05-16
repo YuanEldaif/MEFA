@@ -5,7 +5,7 @@ We propose MEFA Framework to evaluate iterative stochastic purification defenses
 
 **NOTE**: All configs and arguments use the pixel range [0, 255] for adversarial perturbation adv_eps and attack step size adv_eta. However, all experiments scale images so that the pixels range is [-1, 1]. Adversarial parameters are scaled accordingly during execution. The Langevin step size langevin_eps in the arguments uses the pixel range [-1, 1].
 ## Environment and Pretrained models
-run below command for for the required packages of running the codes in the repo.
+Run below command for for the required packages of running the codes in the repo.
 ```python
 pip3 install -r requirements.txt 
 ```
@@ -29,6 +29,10 @@ python3 attack_eval.py --exp_name 'diffpure'
 MEFA framework PGD+EOT20 attack against DDPM-based defense on CIFAR-10 with WideResNet-28-10 under Linf attack:
 ```python
 python3 attack_eval.py --exp_name 'hf_DDPM'
+```
+MEFA framework PGD+EOT20 attack against DDPM-based OOD defense on CINIC10 or FOOD with WideResNet-28-10 under Linf attack:
+```python
+python3 attack_eval.py --exp_name 'hugging_face'
 ```
 MEFA framework PGD+EOT20 attack against EBM-based defense on CIFAR-10 with WideResNet-28-10 under Linf attack:
 ```python
