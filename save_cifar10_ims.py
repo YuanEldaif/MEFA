@@ -20,7 +20,8 @@ import os
 import numpy as np
 from PIL import Image
 
-OUTPUT_DIR = '/home/personal/data/cifar10_pt_custom/'
+#define the path to save the dataset
+OUTPUT_DIR = './data/cifar10_pt_custom/'
 CLASS_MAP = [
     'airplane',  # 0
     'automobile',  # 1
@@ -59,14 +60,14 @@ class CIFAR10Dataset(Dataset):
         return x, y
 
 dataset_train = CIFAR10Dataset(
-    root='/home/personal/data/cifar10_pt/', 
+    root='./data/cifar10_pt/', 
     train=True,
     download=True,
 )
 train_loader = DataLoader(dataset_train, batch_size=1, num_workers=1, drop_last=False)
 
 dataset_val = CIFAR10Dataset(
-    root='/home/personal/data/cifar10_pt/', 
+    root='./data/cifar10_pt/', 
     train=False,
     download=True,
 )
